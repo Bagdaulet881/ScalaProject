@@ -118,7 +118,7 @@ class NodeRouter( node:ActorRef[Node.Command])(implicit system: ActorSystem[_], 
 
 
 
-      pathPrefix("books"){
+      pathPrefix("coffees"){
         concat(
           pathPrefix("search"){
             path(Segment){ bookName: String =>
@@ -134,46 +134,62 @@ class NodeRouter( node:ActorRef[Node.Command])(implicit system: ActorSystem[_], 
           path(Segment){ id: String =>
             concat(
               get{
-                val processFuture: Future[Node.SuccessBook] = node.ask(
-                  ref => Node.GetBook(id, ref))(timeout, scheduler).mapTo[Node.SuccessBook]
+                val processFuture: Future[Node.SuccessCoffee] = node.ask(
+                  ref => Node.GetCoffee(id, ref))(timeout, scheduler).mapTo[Node.SuccessCoffee]
                 onSuccess(processFuture) { response =>
                   complete(response)
                 }
               },
               delete{
-                val processFuture: Future[Node.SuccessBook] = node.ask(
-                  ref => Node.DeleteBook(id, ref))(timeout, scheduler).mapTo[Node.SuccessBook]
+                val processFuture: Future[Node.SuccessCoffee] = node.ask(
+                  ref => Node.DeleteCoffee(id, ref))(timeout, scheduler).mapTo[Node.SuccessCoffee]
                 onSuccess(processFuture) { response =>
                   complete(response)
                 }
               },
               put{
-                entity(as[UpdateBook]) { updateBook=>
-                  val processFuture: Future[Node.SuccessBook] = node.ask(
-                    ref => Node.UpdateBook(updateBook.token, new Book(id,updateBook.categoryId, updateBook.name, updateBook.description), ref))(timeout, scheduler).mapTo[Node.SuccessBook]
-                  onSuccess(processFuture) { response =>
+                (entity(as[UpdateCoffee]) & entity(as[RateCoffee])) {
+                  (updateCoffee: UpdateCoffee, rateCoffee: RateCoffee) =>
+//                    TODO
+                  val processFuture: Future[Node.SuccessCoffee] = node.ask(
+                    ref => Node.UpdateCoffee(updateCoffee.token, new Coffee(id,updateCoffee.categoryId, updateCoffee.name, updateCoffee.description, updateCoffee.rating), ref))(timeout, scheduler).mapTo[Node.SuccessCoffee]
+
+                    val processFuture2: Future[Node.SuccessCoffee] = node.ask(
+                      ref => Node.RateCoffee(rateCoffee.userToken, rateCoffee.coffeeId, rateCoffee.rating.toInt, ref))(timeout, scheduler).mapTo[Node.SuccessCoffee]
+
+                    onSuccess(processFuture) { response =>
                     complete(response)
                   }
+                    onSuccess(processFuture2) { response =>
+                      complete(response)
+                    }
                 }
+//                entity(as[RateCoffee]) { rateCoffee=>
+//                  val processFuture: Future[Node.SuccessCoffee] = node.ask(
+//                    ref => Node.RateCoffee(rateCoffee.userToken, rateCoffee.coffeeId, rateCoffee.rating.toInt, ref))(timeout, scheduler).mapTo[Node.SuccessCoffee]
+//                  onSuccess(processFuture) { response =>
+//                    complete(response)
+//                  }
+//                }
               }
             )
           },
           concat(
             get{
-              val processFuture: Future[Node.SuccessBooks] = node.ask(
-                ref => Node.GetBooks( ref))(timeout, scheduler).mapTo[Node.SuccessBooks]
+              val processFuture: Future[Node.SuccessCoffees] = node.ask(
+                ref => Node.GetCoffees( ref))(timeout, scheduler).mapTo[Node.SuccessCoffees]
               onSuccess(processFuture) { response =>
                 complete(response)
               }
             },
             post{
-              entity(as[CreateBook]) { createBook =>
-                val processFuture: Future[Node.SuccessBook] = node.ask(
-                  ref => Node.CreateBook(
-                    createBook.token,
-                    Book(UUID.randomUUID().toString,createBook.categoryId, createBook.name, createBook.description),ref
+              entity(as[CreateCoffee]) { createCoffee =>
+                val processFuture: Future[Node.SuccessCoffee] = node.ask(
+                  ref => Node.CreateCoffee(
+                    createCoffee.token,
+                    Coffee(UUID.randomUUID().toString,createCoffee.categoryId, createCoffee.name, createCoffee.description, Array.empty),ref
                   )
-                )(timeout, scheduler).mapTo[Node.SuccessBook]
+                )(timeout, scheduler).mapTo[Node.SuccessCoffee]
                 onSuccess(processFuture) { response =>
                   complete(response)
                 }
@@ -234,6 +250,73 @@ class NodeRouter( node:ActorRef[Node.Command])(implicit system: ActorSystem[_], 
             }
           ),
         )
-      }
+      },
+
+      pathPrefix("books"){
+        concat(
+//          TODO
+          pathPrefix("search"){
+            path(Segment){ bookName: String =>
+              get{
+                val processFuture: Future[Node.SuccessBook] = node.ask(
+                  ref => Node.FindBook(bookName, ref))(timeout, scheduler).mapTo[Node.SuccessBook]
+                onSuccess(processFuture) { response =>
+                  complete(response)
+                }
+              }
+            }
+          },
+          path(Segment){ id: String =>
+            concat(
+              get{
+                val processFuture: Future[Node.SuccessBook] = node.ask(
+                  ref => Node.GetBook(id, ref))(timeout, scheduler).mapTo[Node.SuccessBook]
+                onSuccess(processFuture) { response =>
+                  complete(response)
+                }
+              },
+              delete{
+                val processFuture: Future[Node.SuccessBook] = node.ask(
+                  ref => Node.DeleteBook(id, ref))(timeout, scheduler).mapTo[Node.SuccessBook]
+                onSuccess(processFuture) { response =>
+                  complete(response)
+                }
+              },
+              put{
+                entity(as[UpdateBook]) { updateBook=>
+                  val processFuture: Future[Node.SuccessBook] = node.ask(
+                    ref => Node.UpdateBook(updateBook.token, new Book(id,updateBook.categoryId, updateBook.name, updateBook.description), ref))(timeout, scheduler).mapTo[Node.SuccessBook]
+                  onSuccess(processFuture) { response =>
+                    complete(response)
+                  }
+                }
+              }
+            )
+          },
+          concat(
+            get{
+              val processFuture: Future[Node.SuccessCoffees] = node.ask(
+                ref => Node.GetBooks( ref))(timeout, scheduler).mapTo[Node.SuccessCoffees]
+              onSuccess(processFuture) { response =>
+                complete(response)
+              }
+            },
+            post{
+              entity(as[CreateBook]) { createBook =>
+                val processFuture: Future[Node.SuccessBook] = node.ask(
+                  ref => Node.CreateBook(
+                    createBook.token,
+                    Book(UUID.randomUUID().toString,createBook.categoryId, createBook.name, createBook.description),ref
+                  )
+                )(timeout, scheduler).mapTo[Node.SuccessBook]
+                onSuccess(processFuture) { response =>
+                  complete(response)
+                }
+              }
+            }
+          ),
+        )
+      },
+
     )
 }

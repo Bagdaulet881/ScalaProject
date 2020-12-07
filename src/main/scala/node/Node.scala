@@ -4,7 +4,7 @@ import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior, Scheduler}
 import akka.util.Timeout
-import model.{Book, Category, User}
+import model.{Book, Category, Coffee, User}
 import repo.UserAccount
 import sample.persistence.CborSerializable
 
@@ -34,10 +34,29 @@ object Node {
   case class SuccessBooks(result: UserAccount.SummaryBooks) extends Command
 
   case class SuccessBook(result: UserAccount.SummaryBook) extends Command
+//
+  case class SuccessCoffees(result: UserAccount.SummaryCoffees) extends Command
 
+  case class SuccessCoffee(result: UserAccount.SummaryCoffee) extends Command
+//
   case class SuccessCategory(result: UserAccount.SummaryCategory) extends Command
 
   case class SuccessCategories(result: UserAccount.SummaryCategories) extends Command
+
+  //COFFEE
+  case class DeleteCoffee(id: String, replyTo: ActorRef[Command]) extends Command
+
+  case class GetCoffee(id: String, replyTo: ActorRef[Command]) extends Command
+
+//  case class FindBook(bookName: String, replyTo: ActorRef[Command]) extends Command
+
+  case class GetCoffees(replyTo: ActorRef[Command]) extends Command
+
+  case class CreateCoffee(token: String, createCoffee: Coffee, replyTo: ActorRef[Command]) extends Command
+
+  case class UpdateCoffee(token: String, updatedCoffee: Coffee, replyTo: ActorRef[Command]) extends Command
+
+  case class RateCoffee(userToken: String, coffeeId: String, newRate: Int, replyTo: ActorRef[Command]) extends Command
 
   //BOOK
   case class DeleteBook(id: String, replyTo: ActorRef[Command]) extends Command
@@ -105,6 +124,22 @@ object Node {
             account ! UserAccount.GetUsers(token, replyTo)
           case AddBookToAccount(bookId, userId, token, replyTo) =>
             account ! UserAccount.AddToCart(bookId, userId, token, replyTo)
+
+//        COFFEE
+          case GetCoffee(id, replyTo) =>
+            account ! UserAccount.GetCoffee(id, replyTo)
+          case GetCoffees(replyTo) =>
+            account ! UserAccount.GetCoffees(replyTo)
+//          case FindBook(bookName, replyTo) =>
+//            account ! UserAccount.SearchBookByName(bookName, replyTo)
+          case DeleteCoffee(id, replyTo) =>
+            account ! UserAccount.RemoveCoffee(id, replyTo)
+          case CreateCoffee(token, createCoffee, replyTo) =>
+            account ! UserAccount.AddCoffee(token, createCoffee, replyTo)
+          case UpdateCoffee(token, newCoffee, replyTo) =>
+            account ! UserAccount.UpdateCoffee(token, newCoffee, replyTo)
+          case RateCoffee(userToken, coffeeId, rating, replyTo) =>
+            account ! UserAccount.RateCoffee(userToken, coffeeId, rating, replyTo)
 
 //            BOOK
           case GetBook(id, replyTo) =>

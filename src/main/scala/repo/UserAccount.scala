@@ -5,7 +5,7 @@ import java.time.Instant
 import akka.actor.typed.{ActorRef, Behavior, SupervisorStrategy}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior, RetentionCriteria}
-import model.{Book, Category, User}
+import model.{Book, Category, Coffee, User}
 import sample.persistence.CborSerializable
 import node.Node
 import node.Node.Command
@@ -13,7 +13,7 @@ import node.Node.Command
 import scala.concurrent.duration.DurationInt
 object UserAccount {
 
-  final case class State(users: Map[String, User], books: Map[String, Book], cats: Map[String, Category], checkoutDate: Option[Instant]) extends CborSerializable {
+  final case class State(users: Map[String, User], books: Map[String, Book], cats: Map[String, Category],coffees: Map[String, Coffee], checkoutDate: Option[Instant]) extends CborSerializable {
     def isCheckedOut: Boolean =
       checkoutDate.isDefined
 
@@ -42,6 +42,37 @@ object UserAccount {
 
     def removeUser(itemId: String): State =
       copy(users = users - itemId)
+//COFFEE
+    def hasCoffee(itemId: String): Boolean =
+      coffees.contains(itemId)
+
+    def isEmptyCoffees: Boolean =
+      coffees.isEmpty
+    def getCoffeeById(coffeeId: String): Coffee = {
+      coffees(coffeeId)
+    }
+    def updateCoffee(itemId: String, coffee: Coffee): State = {
+      hasCoffee(itemId) match {
+        case true =>
+          copy(coffees = coffees - itemId)
+          copy(coffees = coffees + (itemId -> coffee))
+        case false =>
+          copy(coffees = coffees + (coffee.id -> coffee))
+
+      }
+    }
+    def rateCoffee(coffeeId: String, newRate: Int): State = {
+        val temp = getCoffeeById(coffeeId)
+        val newList = temp.rating :+ newRate
+        val newCoffee = temp.copy(rating = newList)
+      updateCoffee(newCoffee.id, newCoffee)
+    }
+    def removeCoffee(itemId: String): State =
+      copy(coffees = coffees - itemId)
+    def toSummaryCoffees: SummaryCoffees =
+      SummaryCoffees(coffees, isCheckedOut)
+    def toSummaryCoffee(id: String): SummaryCoffee =
+      SummaryCoffee(coffees.get(id), isCheckedOut)
 //CAT
   def hasCategory(itemId: String): Boolean =
     cats.contains(itemId)
@@ -72,6 +103,8 @@ object UserAccount {
 
     def toSummaryUser(id: String): SummaryUser =
       SummaryUser(users.get(id), isCheckedOut)
+
+
 //BOOK
     def hasBook(itemId: String): Boolean =
       books.contains(itemId)
@@ -108,7 +141,7 @@ object UserAccount {
   }
 
   object State {
-    val empty: State = State(users = Map.empty, books = Map.empty, cats = Map.empty, checkoutDate = None)
+    val empty: State = State(users = Map.empty, books = Map.empty, cats = Map.empty, coffees = Map.empty, checkoutDate = None)
   }
 //USER ACC
   final case class AddUser(userAccount: User, replyTo: ActorRef[Node.Command]) extends Command
@@ -126,6 +159,20 @@ object UserAccount {
   final case class SummaryUsers(users: Map[String, User], checkedOut: Boolean) extends Command
 
   final case class SummaryUser(user: Option[User], checkedOut: Boolean) extends Command
+
+  //COFFEE
+  final case class AddCoffee(token:String, coffee: Coffee, replyTo: ActorRef[Node.Command]) extends Command
+
+  final case class RemoveCoffee(itemId: String, replyTo: ActorRef[Node.Command]) extends Command
+
+  final case class UpdateCoffee(token: String, newCoffee: Coffee, replyTo: ActorRef[Node.Command]) extends Command
+
+  final case class GetCoffee(id: String, replyTo: ActorRef[Node.Command]) extends Command
+
+  final case class GetCoffees(replyTo: ActorRef[Node.Command]) extends Command
+
+  final case class RateCoffee(userToken: String, coffeeId: String, newRate: Int, replyTo: ActorRef[Node.Command]) extends Command
+
 //BOOK
   final case class AddBook(token:String, book: Book, replyTo: ActorRef[Node.Command]) extends Command
 
@@ -134,7 +181,6 @@ object UserAccount {
   final case class AdjustBook(itemId: String, book: Book, replyTo: ActorRef[Node.Command]) extends Command
 
   final case class UpdateBook(token: String, newBook: Book, replyTo: ActorRef[Node.Command]) extends Command
-
 
   final case class GetBook(id: String, replyTo: ActorRef[Node.Command]) extends Command
 
@@ -159,6 +205,10 @@ object UserAccount {
 
   final case class SummaryBook(book: Option[Book], checkedOut: Boolean) extends Command
 
+  final case class SummaryCoffees(coffees: Map[String, Coffee], checkedOut: Boolean) extends Command
+
+  final case class SummaryCoffee(coffee: Option[Coffee], checkedOut: Boolean) extends Command
+
   final case class SummaryCategory(category: Option[Category], checkedOut: Boolean) extends Command
 
   final case class SummaryCategories(cats: Map[String, Category], checkedOut: Boolean) extends Command
@@ -182,6 +232,14 @@ object UserAccount {
 
   final case class UserCartUpdated(cartId: String, bookId: String, userId: String) extends Event
 
+//
+  final case class CoffeeAdded(cartId: String, itemId: String, coffee: Coffee) extends Event
+
+  final case class CoffeeRemoved(cartId: String, itemId: String) extends Event
+
+  final case class CoffeeAdjusted(cartId: String, itemId: String, coffee: Coffee) extends Event
+
+  final case class CoffeeRated(cartId: String, itemId: String, newRate: Int) extends Event
 //
   final case class BookAdded(cartId: String, itemId: String, book: Book) extends Event
 
@@ -276,6 +334,77 @@ object UserAccount {
         if (token == "user" + id && state.hasUser(id))
           replyTo ! Node.SuccessUser(state.toSummaryUser(id))
         Effect.none
+//        --------------------------------------------COFFEE--------------------------------------------------------------
+      case GetCoffee(id, replyTo) =>
+        if (state.hasCoffee(id))
+          replyTo ! Node.SuccessCoffee(state.toSummaryCoffee(id))
+        Effect.none
+      case GetCoffees(replyTo) =>
+        replyTo ! Node.SuccessCoffees(state.toSummaryCoffees)
+        Effect.none
+      case AddCoffee(token, coffee, replyTo) =>
+        if(token =="admin"){
+          if (state.hasCoffee(coffee.id)) {
+            replyTo ! Node.Error(s"Item '${coffee.id}' was already added")
+            Effect.none
+          } else if (coffee.name == "" || coffee.description == "" || coffee.categoryId == "") {
+            replyTo ! Node.Error("Name or description or category mustn't be empty")
+            Effect.none
+          } else if(state.hasCategory(coffee.categoryId)) {
+            Effect
+              .persist(CoffeeAdded(cartId, coffee.id, coffee))
+              .thenRun(updatedCart => replyTo ! Node.SuccessCoffee(updatedCart.toSummaryCoffee(coffee.id)))
+          }else
+          {
+            replyTo ! Node.Error("Category for book not found!")
+            Effect.none
+          }
+        }else{
+          replyTo ! Node.Error("Access denied!")
+          Effect.none
+        }
+
+      case RemoveCoffee(itemId, replyTo) =>
+        if (state.hasCoffee(itemId)) {
+          Effect.persist(
+            CoffeeRemoved(cartId, itemId)
+          ).thenRun(updatedCart => replyTo ! Node.SuccessCoffee(updatedCart.toSummaryCoffee(itemId)))
+        } else {
+          replyTo ! Node.SuccessCoffees(state.toSummaryCoffees) // removing an item is idempotent
+          Effect.none
+        }
+
+      case UpdateCoffee(token, coffee, replyTo) =>
+        if (state.hasCoffee(coffee.id) && token == "admin") {
+          if (coffee.name == "" || coffee.description == "" || coffee.categoryId == "") {
+            replyTo ! Node.Error("Name or description mustn't be empty")
+            Effect.none
+          }else if(state.hasCategory(coffee.categoryId)) {
+            Effect
+              .persist(CoffeeAdjusted(cartId, coffee.id, coffee))
+              .thenRun(updatedCart => replyTo ! Node.SuccessCoffee(updatedCart.toSummaryCoffee(coffee.id)))
+          } else{
+            replyTo ! Node.Error("There's no such category or admin token expired")
+            Effect.none
+          }
+        }else{
+          replyTo ! Node.Error("Access denied!")
+          Effect.none
+        }
+      case RateCoffee(userToken, coffeeId, newRate: Int, replyTo) =>
+        if (state.hasCoffee(coffeeId) && userToken!="") {
+          if (newRate>=0) {
+            Effect
+              .persist(CoffeeRated(cartId, coffeeId, newRate))
+              .thenRun(updatedCart => replyTo ! Node.SuccessCoffee(updatedCart.toSummaryCoffee(coffeeId)))
+        }else{
+          replyTo ! Node.Error("Rate must be positive int")
+          Effect.none
+        }
+        }else{
+          replyTo ! Node.Error("There's no Coffee")
+          Effect.none
+        }
 //        --------------------------------------------BOOK--------------------------------------------------------------
 
       case GetBook(id, replyTo) =>
@@ -461,14 +590,20 @@ object UserAccount {
 
   private def handleEvent(state: State, event: Event) = {
     event match {
+      case CheckedOut(_, eventTime) => state.checkout(eventTime)
 //        USER ACC
       case UserAdded(_, itemId, quantity) => state.updateUser(itemId, quantity)
       case UserRemoved(_, itemId) => state.removeUser(itemId)
       case UserAdjusted(_, itemId, quantity) => state.updateUser(itemId, quantity)
       case UserCartUpdated(_, bookId, userId) => state.updateUser(userId, state.addToCart(bookId, state.getUserById(userId)))
-//
-      case CheckedOut(_, eventTime) => state.checkout(eventTime)
-//        BOOK
+//        COFFEE
+      case CoffeeAdded(_, itemId, quantity) => state.updateCoffee(itemId, quantity)
+      case BookRemoved(_, itemId) => state.removeCoffee(itemId)
+      case CoffeeAdjusted(_, itemId, quantity) =>state.updateCoffee(itemId, quantity)
+      case CoffeeRated(_, itemId, quantity) =>state.rateCoffee(itemId, quantity)
+
+
+      //        BOOK
       case BookAdded(_, itemId, quantity) => state.updateBook(itemId, quantity)
       case BookRemoved(_, itemId) => state.removeBook(itemId)
       case BookAdjusted(_, itemId, quantity) =>state.updateBook(itemId, quantity)

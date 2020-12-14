@@ -31,9 +31,6 @@ object Node {
 
   case class SuccessUser(result: UserAccount.SummaryUser) extends Command
 
-  case class SuccessBooks(result: UserAccount.SummaryBooks) extends Command
-
-  case class SuccessBook(result: UserAccount.SummaryBook) extends Command
 //
   case class SuccessCoffees(result: UserAccount.SummaryCoffees) extends Command
 

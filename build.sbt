@@ -41,3 +41,4 @@ logBuffered in Test := false
 licenses := Seq(("CC0", url("http://creativecommons.org/publicdomain/zero/1.0")))
 
 mainClass in Compile := Some("Main")
+

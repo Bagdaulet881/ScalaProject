@@ -1,11 +1,12 @@
 package repo
 
 import java.time.Instant
+import java.util.UUID
 
 import akka.actor.typed.{ActorRef, Behavior, SupervisorStrategy}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior, RetentionCriteria}
-import model.{Book, Category, Coffee, User}
+import model.{Book, Category, Coffee, Order, User}
 import sample.persistence.CborSerializable
 import node.Node
 import node.Node.Command
@@ -13,7 +14,7 @@ import node.Node.Command
 import scala.concurrent.duration.DurationInt
 object UserAccount {
 
-  final case class State(users: Map[String, User], books: Map[String, Book], cats: Map[String, Category],coffees: Map[String, Coffee], checkoutDate: Option[Instant]) extends CborSerializable {
+  final case class State(users: Map[String, User], books: Map[String, Book], cats: Map[String, Category],coffees: Map[String, Coffee], orders: Map[String, Order], checkoutDate: Option[Instant]) extends CborSerializable {
     def isCheckedOut: Boolean =
       checkoutDate.isDefined
 
@@ -25,9 +26,11 @@ object UserAccount {
     def getUserById(id: String): User ={
       users(id)
     }
-    def addToCart(bookId:String, user: User): User ={
-      var newBookList = user.books :+ getBookById(bookId)
-      var changedUser = user.copy(books=newBookList)
+    def addToCart(coffeeId:String, user: User): User ={
+      val newOrder = new Order(UUID.randomUUID().toString, user.id, coffeeId)
+      updateOrder(newOrder)
+      var newOrderList = user.orders :+ getCoffeeById(coffeeId)
+      var changedUser = user.copy(orders=newOrderList)
       changedUser
     }
     def updateUser(itemId: String, user: User): State = {
@@ -42,6 +45,32 @@ object UserAccount {
 
     def removeUser(itemId: String): State =
       copy(users = users - itemId)
+
+//ORDER
+    def hasOrder(itemId: String): Boolean =
+      orders.contains(itemId)
+    def updateOrder(order: Order): State = {
+      hasOrder(order.id) match {
+        case true =>
+          copy(orders = orders - order.id)
+          copy(orders = orders + (order.id -> order))
+        case false =>
+          copy(orders = orders + (order.id -> order))
+      }
+    }
+    def toSummaryOrders: SummaryOrders = {
+      val userList = users.values.toList
+      var orderList = Array[Order]()
+      for(user <- userList){
+        for(order <- user.orders){
+          orderList = orderList :+ new Order(UUID.randomUUID().toString, user.id, order.id)
+        }
+      }
+      SummaryOrders(orderList, isCheckedOut)
+    }
+
+    def toSummaryOrder(id: String): SummaryOrder =
+      SummaryOrder(orders.get(id), isCheckedOut)
 //COFFEE
     def hasCoffee(itemId: String): Boolean =
       coffees.contains(itemId)
@@ -106,42 +135,13 @@ object UserAccount {
 
 
 //BOOK
-    def hasBook(itemId: String): Boolean =
-      books.contains(itemId)
 
-    def isEmptyBooks: Boolean =
-      books.isEmpty
-    def getBookById(bookId: String): Book = {
-      books(bookId)
-    }
-    def updateBook(itemId: String, book: Book): State = {
-      hasBook(itemId) match {
-        case true =>
-          copy(books = books - itemId)
-          copy(books = books + (itemId -> book))
-        case false =>
-          copy(books = books + (book.id -> book))
 
-      }
-    }
 
-    def removeBook(itemId: String): State =
-      copy(books = books - itemId)
-    def searchBookByName(bookName: String): SummaryBook = {
-      val default = (-1,"")
-      val id = books.find(_._2.name==bookName).getOrElse(default)._1
-      println("ID: " + id.toString)
-      toSummaryBook(id.toString)
-    }
-    def toSummaryBooks: SummaryBooks =
-      SummaryBooks(books, isCheckedOut)
-
-    def toSummaryBook(id: String): SummaryBook =
-      SummaryBook(books.get(id), isCheckedOut)
   }
 
   object State {
-    val empty: State = State(users = Map.empty, books = Map.empty, cats = Map.empty, coffees = Map.empty, checkoutDate = None)
+    val empty: State = State(users = Map.empty, books = Map.empty, cats = Map.empty, coffees = Map.empty, orders = Map.empty, checkoutDate = None)
   }
 //USER ACC
   final case class AddUser(userAccount: User, replyTo: ActorRef[Node.Command]) extends Command
@@ -150,7 +150,7 @@ object UserAccount {
 
   final case class AdjustUser(itemId: String, userAccount: User, replyTo: ActorRef[Node.Command]) extends Command
 
-  final case class AddToCart(bookId: String, userId:String, userToken: String, replyTo: ActorRef[Node.Command]) extends Command
+  final case class AddToOrderList(bookId: String, userId:String, userToken: String, replyTo: ActorRef[Node.Command]) extends Command
 
   final case class GetUser(token: String, id: String, replyTo: ActorRef[Node.Command]) extends Command
 
@@ -159,6 +159,10 @@ object UserAccount {
   final case class SummaryUsers(users: Map[String, User], checkedOut: Boolean) extends Command
 
   final case class SummaryUser(user: Option[User], checkedOut: Boolean) extends Command
+  //ORDER
+  final case class GetOrder(id: String, replyTo: ActorRef[Node.Command]) extends Command
+
+  final case class GetOrders(replyTo: ActorRef[Node.Command]) extends Command
 
   //COFFEE
   final case class AddCoffee(token:String, coffee: Coffee, replyTo: ActorRef[Node.Command]) extends Command
@@ -173,20 +177,7 @@ object UserAccount {
 
   final case class RateCoffee(userToken: String, coffeeId: String, newRate: Int, replyTo: ActorRef[Node.Command]) extends Command
 
-//BOOK
-  final case class AddBook(token:String, book: Book, replyTo: ActorRef[Node.Command]) extends Command
 
-  final case class RemoveBook(itemId: String, replyTo: ActorRef[Node.Command]) extends Command
-
-  final case class AdjustBook(itemId: String, book: Book, replyTo: ActorRef[Node.Command]) extends Command
-
-  final case class UpdateBook(token: String, newBook: Book, replyTo: ActorRef[Node.Command]) extends Command
-
-  final case class GetBook(id: String, replyTo: ActorRef[Node.Command]) extends Command
-
-  final case class GetBooks(replyTo: ActorRef[Node.Command]) extends Command
-
-  final case class SearchBookByName(bookName:String, replyTo: ActorRef[Node.Command]) extends Command
 //CAT
   final case class AddCategory(cat: Category, replyTo: ActorRef[Node.Command]) extends Command
 
@@ -201,9 +192,11 @@ object UserAccount {
 
 
 
-  final case class SummaryBooks(books: Map[String, Book], checkedOut: Boolean) extends Command
 
-  final case class SummaryBook(book: Option[Book], checkedOut: Boolean) extends Command
+//
+  final case class SummaryOrders(orders: Array[Order], checkedOut: Boolean) extends Command
+
+  final case class SummaryOrder(order: Option[Order], checkedOut: Boolean) extends Command
 
   final case class SummaryCoffees(coffees: Map[String, Coffee], checkedOut: Boolean) extends Command
 
@@ -232,7 +225,9 @@ object UserAccount {
 
   final case class UserCartUpdated(cartId: String, bookId: String, userId: String) extends Event
 
-//
+  final case class OrderAdded(cartId: String, itemId: String, order: Order) extends Event
+
+  //
   final case class CoffeeAdded(cartId: String, itemId: String, coffee: Coffee) extends Event
 
   final case class CoffeeRemoved(cartId: String, itemId: String) extends Event
@@ -240,12 +235,6 @@ object UserAccount {
   final case class CoffeeAdjusted(cartId: String, itemId: String, coffee: Coffee) extends Event
 
   final case class CoffeeRated(cartId: String, itemId: String, newRate: Int) extends Event
-//
-  final case class BookAdded(cartId: String, itemId: String, book: Book) extends Event
-
-  final case class BookRemoved(cartId: String, itemId: String) extends Event
-
-  final case class BookAdjusted(cartId: String, itemId: String, book: Book) extends Event
 //
   final case class CategoryAdded(cartId: String, itemId: String, cat: Category) extends Event
 
@@ -285,12 +274,12 @@ object UserAccount {
             .persist(UserAdded(cartId, userAccount.id, userAccount))
             .thenRun(updatedCart => replyTo ! Node.SuccessUser(updatedCart.toSummaryUser(userAccount.id)))
         }
-      case AddToCart(bookId, userId, userToken, replyTo) =>
+      case AddToOrderList(coffeeId, userId, userToken, replyTo) =>
 
         if (state.hasUser(userId)) {
-          if("user" + userId == userToken || state.hasBook(bookId)){
+          if("user" + userId == userToken || state.hasCoffee(coffeeId)){
             Effect
-              .persist(UserCartUpdated(cartId, bookId, userId))
+              .persist(UserCartUpdated(cartId, coffeeId, userId))
               .thenRun(updatedCart => replyTo ! Node.SuccessUser(updatedCart.toSummaryUser(userId)))
           }else{
             replyTo ! Node.Error(s"Cant add book to cart, token expired or book not found")
@@ -405,78 +394,21 @@ object UserAccount {
           replyTo ! Node.Error("There's no Coffee")
           Effect.none
         }
+      //        --------------------------------------------ORDER--------------------------------------------------------------
+
+      case GetOrder(id, replyTo) =>
+        if (state.hasOrder(id))
+          replyTo ! Node.SuccessOrder(state.toSummaryOrder(id))
+        Effect.none
+      case GetOrders(replyTo) =>
+        replyTo ! Node.SuccessOrders(state.toSummaryOrders)
+        Effect.none
+
+
+
 //        --------------------------------------------BOOK--------------------------------------------------------------
 
-      case GetBook(id, replyTo) =>
-        if (state.hasBook(id))
-          replyTo ! Node.SuccessBook(state.toSummaryBook(id))
-        Effect.none
-      case GetBooks(replyTo) =>
-        replyTo ! Node.SuccessBooks(state.toSummaryBooks)
-        Effect.none
-      case SearchBookByName(bookName, replyTo) =>
-        replyTo ! Node.SuccessBook(state.searchBookByName(bookName))
-        Effect.none
-      case AddBook(token, book, replyTo) =>
-        if(token =="admin"){
-          if (state.hasBook(book.id)) {
-            replyTo ! Node.Error(s"Item '${book.id}' was already added")
-            Effect.none
-          } else if (book.name == "" || book.description == "" || book.categoryId == "") {
-            replyTo ! Node.Error("Name or description or category mustn't be empty")
-            Effect.none
-          } else if(state.hasCategory(book.categoryId)) {
-            Effect
-              .persist(BookAdded(cartId, book.id, book))
-              .thenRun(updatedCart => replyTo ! Node.SuccessBook(updatedCart.toSummaryBook(book.id)))
-          }else
-          {
-            replyTo ! Node.Error("Category for book not found!")
-            Effect.none
-          }
-        }else{
-          replyTo ! Node.Error("Access denied!")
-          Effect.none
-        }
 
-      case RemoveBook(itemId, replyTo) =>
-        if (state.hasBook(itemId)) {
-          Effect.persist(
-            BookRemoved(cartId, itemId)
-          ).thenRun(updatedCart => replyTo ! Node.SuccessBook(updatedCart.toSummaryBook(itemId)))
-        } else {
-          replyTo ! Node.SuccessBooks(state.toSummaryBooks) // removing an item is idempotent
-          Effect.none
-        }
-      case AdjustBook(itemId, book, replyTo) =>
-        if (book.name == "" && book.description == "") {
-          replyTo ! Node.Error("Name or description mustn't be empty")
-          Effect.none
-        } else if (state.hasBook(itemId)) {
-          Effect
-            .persist(BookAdjusted(cartId, itemId, book))
-            .thenRun(updatedCart => replyTo ! Node.SuccessBooks(updatedCart.toSummaryBooks))
-        } else {
-          replyTo ! Node.Error(s"Cannot adjust quantity for item '$itemId'. Item not present on cart")
-          Effect.none
-        }
-      case UpdateBook(token, book, replyTo) =>
-        if (state.hasBook(book.id) && token == "admin") {
-          if (book.name == "" || book.description == "" || book.categoryId == "") {
-            replyTo ! Node.Error("Name or description mustn't be empty")
-            Effect.none
-          }else if(state.hasCategory(book.categoryId)) {
-            Effect
-              .persist(BookAdjusted(cartId, book.id, book))
-              .thenRun(updatedCart => replyTo ! Node.SuccessBook(updatedCart.toSummaryBook(book.id)))
-        } else{
-          replyTo ! Node.Error("There's no such category or admin token expired")
-          Effect.none
-        }
-        }else{
-          replyTo ! Node.Error("Access denied!")
-          Effect.none
-        }
 //        ------------------------------------------------------CATEGORY------------------------------------------------
 
       case GetCategory(id, replyTo) =>
@@ -528,15 +460,7 @@ object UserAccount {
 
 
 
-      case CheckoutBook(replyTo) =>
-        if (state.isEmptyBooks) {
-          replyTo ! Node.Error("Cannot checkout an empty book cart")
-          Effect.none
-        } else {
-          Effect
-            .persist(CheckedOut(cartId, Instant.now()))
-            .thenRun(updatedCart => replyTo ! Node.SuccessBooks(updatedCart.toSummaryBooks))
-        }
+
       case GetToken(email, password, replyTo) =>
         state.users.foreach(u => {
           if (u._2.email == email && u._2.password == password)
@@ -554,9 +478,6 @@ object UserAccount {
       case cmd: AddUser =>
         cmd.replyTo ! Node.Error("Can't add an item to an already checked out account")
         Effect.none
-      case cmd: AddToCart =>
-        cmd.replyTo ! Node.Error("add to cart error IDK")
-        Effect.none
       case cmd: RemoveUser =>
         cmd.replyTo ! Node.Error("Can't remove an item from an already checked out account")
         Effect.none
@@ -565,23 +486,6 @@ object UserAccount {
         Effect.none
       case cmd: Checkout =>
         cmd.replyTo ! Node.Error("Can't checkout already checked out account")
-        Effect.none
-      case GetBook(id, replyTo) =>
-        if (state.hasBook(id))
-          replyTo ! Node.SuccessBook(state.toSummaryBook(id))
-        Effect.none
-      case GetBooks(replyTo) =>
-        replyTo ! Node.SuccessBooks(state.toSummaryBooks)
-        Effect.none
-      case cmd: AddBook =>
-        cmd.replyTo ! Node.Error("Can't add an item to an already checked out account")
-        Effect.none
-
-      case cmd: RemoveBook =>
-        cmd.replyTo ! Node.Error("Can't remove an item from an already checked out account")
-        Effect.none
-      case cmd: AdjustBook =>
-        cmd.replyTo ! Node.Error("Can't adjust item on an already checked out account")
         Effect.none
       case cmd: CheckoutBook =>
         cmd.replyTo ! Node.Error("Can't checkout already checked out account")
@@ -595,18 +499,13 @@ object UserAccount {
       case UserAdded(_, itemId, quantity) => state.updateUser(itemId, quantity)
       case UserRemoved(_, itemId) => state.removeUser(itemId)
       case UserAdjusted(_, itemId, quantity) => state.updateUser(itemId, quantity)
-      case UserCartUpdated(_, bookId, userId) => state.updateUser(userId, state.addToCart(bookId, state.getUserById(userId)))
+      case UserCartUpdated(_, coffeeId, userId) => state.updateUser(userId, state.addToCart(coffeeId, state.getUserById(userId)))
 //        COFFEE
       case CoffeeAdded(_, itemId, quantity) => state.updateCoffee(itemId, quantity)
-      case BookRemoved(_, itemId) => state.removeCoffee(itemId)
+      case CoffeeRemoved(_, itemId) => state.removeCoffee(itemId)
       case CoffeeAdjusted(_, itemId, quantity) =>state.updateCoffee(itemId, quantity)
       case CoffeeRated(_, itemId, quantity) =>state.rateCoffee(itemId, quantity)
-
-
-      //        BOOK
-      case BookAdded(_, itemId, quantity) => state.updateBook(itemId, quantity)
-      case BookRemoved(_, itemId) => state.removeBook(itemId)
-      case BookAdjusted(_, itemId, quantity) =>state.updateBook(itemId, quantity)
+//        ORDER
 //        CATEGORY
       case CategoryAdded(_, itemId, quantity) => state.updateCategory(itemId, quantity)
       case CategoryRemoved(_, itemId) => state.removeCategory(itemId)

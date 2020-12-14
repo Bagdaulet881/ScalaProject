@@ -42,6 +42,13 @@ object Node {
   case class SuccessCategory(result: UserAccount.SummaryCategory) extends Command
 
   case class SuccessCategories(result: UserAccount.SummaryCategories) extends Command
+//
+  case class SuccessOrder(result: UserAccount.SummaryOrder) extends Command
+
+  case class SuccessOrders(result: UserAccount.SummaryOrders) extends Command
+
+  //ORDER
+  case class GetOrders(replyTo: ActorRef[Command]) extends Command
 
   //COFFEE
   case class DeleteCoffee(id: String, replyTo: ActorRef[Command]) extends Command
@@ -58,18 +65,6 @@ object Node {
 
   case class RateCoffee(userToken: String, coffeeId: String, newRate: Int, replyTo: ActorRef[Command]) extends Command
 
-  //BOOK
-  case class DeleteBook(id: String, replyTo: ActorRef[Command]) extends Command
-
-  case class GetBook(id: String, replyTo: ActorRef[Command]) extends Command
-
-  case class FindBook(bookName: String, replyTo: ActorRef[Command]) extends Command
-
-  case class GetBooks(replyTo: ActorRef[Command]) extends Command
-
-  case class CreateBook(token: String, createBook: Book, replyTo: ActorRef[Command]) extends Command
-
-  case class UpdateBook(token: String, newBook: Book, replyTo: ActorRef[Command]) extends Command
 
   //CAT
   case class DeleteCategory(id: String, replyTo: ActorRef[Command]) extends Command
@@ -93,6 +88,8 @@ object Node {
   case class UpdateAccount(token: String, id: String, replyTo: ActorRef[Command])
 
   case class AddBookToAccount(bookId: String, userId:String, token: String, replyTo: ActorRef[Command]) extends Command
+
+  case class OrderCoffee(coffeeId: String, userId:String, token: String, replyTo: ActorRef[Command]) extends Command
 //
   case class Create(userAccount: User, replyTo: ActorRef[Command]) extends Command
 
@@ -122,9 +119,12 @@ object Node {
             account ! UserAccount.RemoveUser(token, id, replyTo)
           case GetAccounts(token, replyTo) =>
             account ! UserAccount.GetUsers(token, replyTo)
-          case AddBookToAccount(bookId, userId, token, replyTo) =>
-            account ! UserAccount.AddToCart(bookId, userId, token, replyTo)
+          case OrderCoffee(coffeeId, userId, token, replyTo) =>
+            account ! UserAccount.AddToOrderList(coffeeId, userId, token, replyTo)
 
+//        ORDER
+          case GetOrders(replyTo) =>
+            account ! UserAccount.GetOrders(replyTo)
 //        COFFEE
           case GetCoffee(id, replyTo) =>
             account ! UserAccount.GetCoffee(id, replyTo)
@@ -141,19 +141,7 @@ object Node {
           case RateCoffee(userToken, coffeeId, rating, replyTo) =>
             account ! UserAccount.RateCoffee(userToken, coffeeId, rating, replyTo)
 
-//            BOOK
-          case GetBook(id, replyTo) =>
-            account ! UserAccount.GetBook(id, replyTo)
-          case GetBooks(replyTo) =>
-            account ! UserAccount.GetBooks(replyTo)
-          case FindBook(bookName, replyTo) =>
-            account ! UserAccount.SearchBookByName(bookName, replyTo)
-          case DeleteBook(id, replyTo) =>
-            account ! UserAccount.RemoveBook(id, replyTo)
-          case CreateBook(token, createBook, replyTo) =>
-            account ! UserAccount.AddBook(token, createBook, replyTo)
-          case UpdateBook(token, newBook, replyTo) =>
-            account ! UserAccount.UpdateBook(token, newBook, replyTo)
+
           //            CAT
           case GetCategory(id, replyTo) =>
             account ! UserAccount.GetCategory(id, replyTo)

@@ -1,20 +1,20 @@
 organization := "com.lightbend.akka.samples"
 name := "akka-sample-persistence-scala"
-
+enablePlugins(JavaAppPackaging, AshScriptPlugin)
 scalaVersion := "2.13.1"
 val akkaVersion = "2.6.10"
-
+val circeVersion = "0.13.0"
+val akkaHttpVersion = "10.2.1"
 libraryDependencies ++= Seq(
+  "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+  "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
+  "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
   "com.typesafe.akka" %% "akka-persistence-typed" % akkaVersion,
   "com.typesafe.akka" %% "akka-serialization-jackson" % akkaVersion,
   "ch.qos.logback" % "logback-classic" % "1.2.3",
   "com.typesafe.akka" %% "akka-actor-testkit-typed" % akkaVersion % Test,
-  "org.scalatest" %% "scalatest" % "3.1.0" % Test
-)
+  "org.scalatest" %% "scalatest" % "3.1.0" % Test,
 
-val circeVersion = "0.13.0"
-val akkaHttpVersion = "10.2.1"
-libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor-typed"           % akkaVersion,
   "com.typesafe.akka" %% "akka-cluster-typed"         % akkaVersion,
   "com.typesafe.akka" %% "akka-serialization-jackson" % akkaVersion,
